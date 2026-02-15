@@ -1,0 +1,104 @@
+@import "tailwindcss";
+
+:root {
+  --bg-primary: #0a0a0f;
+  --bg-secondary: #12121a;
+  --bg-card: #1a1a2e;
+  --bg-card-hover: #22223a;
+  --border: #2a2a4a;
+  --text-primary: #f0f0ff;
+  --text-secondary: #9090b0;
+  --text-muted: #606080;
+  --accent-orange: #f7931a;
+  --accent-gold: #ffd700;
+  --accent-purple: #8b5cf6;
+  --accent-blue: #3b82f6;
+}
+
+@theme inline {
+  --color-background: var(--bg-primary);
+  --color-foreground: var(--text-primary);
+  --color-card: var(--bg-card);
+  --color-card-hover: var(--bg-card-hover);
+  --color-border: var(--border);
+  --color-muted: var(--text-muted);
+  --color-secondary: var(--text-secondary);
+  --color-bitcoin: var(--accent-orange);
+  --color-gold: var(--accent-gold);
+  --color-accent-purple: var(--accent-purple);
+  --color-accent-blue: var(--accent-blue);
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", "Fira Code", monospace;
+}
+
+body {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* Bitcoin glow animation */
+@keyframes btcGlow {
+  0%, 100% { filter: drop-shadow(0 0 8px rgba(247, 147, 26, 0.4)); }
+  50% { filter: drop-shadow(0 0 20px rgba(247, 147, 26, 0.8)); }
+}
+
+.btc-glow {
+  animation: btcGlow 3s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+}
+
+.float-animation {
+  animation: float 4s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(247, 147, 26, 0.1) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 3s ease-in-out infinite;
+}
+
+@keyframes rank-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+.rank-gold { color: #ffd700; text-shadow: 0 0 10px rgba(255, 215, 0, 0.5); }
+.rank-silver { color: #c0c0c0; text-shadow: 0 0 10px rgba(192, 192, 192, 0.4); }
+.rank-bronze { color: #cd7f32; text-shadow: 0 0 10px rgba(205, 127, 50, 0.4); }
+
+/* Particle background */
+.bg-grid {
+  background-image:
+    radial-gradient(circle at 1px 1px, rgba(247, 147, 26, 0.08) 1px, transparent 0);
+  background-size: 40px 40px;
+}
