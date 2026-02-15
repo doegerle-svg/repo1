@@ -12,6 +12,7 @@ import {
   Shield,
   ArrowRight,
   RefreshCw,
+  Download,
 } from "lucide-react";
 import { TierBadge } from "@/components/TierBadge";
 import { BitcoinAmount } from "@/components/BitcoinAmount";
@@ -46,6 +47,7 @@ export default function VerifyPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [result, setResult] = useState<VerificationResult | null>(null);
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
+  const [generatingTestPsbt, setGeneratingTestPsbt] = useState(false);
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -78,6 +80,42 @@ export default function VerifyPage() {
     await navigator.clipboard.writeText(challenge.nonce);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const generateTestPSBT = async () => {
+    if (!challenge) return;
+    setGeneratingTestPsbt(true);
+    setError("");
+    try {
+      const res = await fetch("/api/test/generate-psbt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          challengeId: challenge.challengeId,
+          amountBtc: 1.5,
+        }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        setError(data.error || "Failed to generate test PSBT");
+        return;
+      }
+      // Convert base64 to binary and create a File object
+      const binaryStr = atob(data.data.psbt);
+      const bytes = new Uint8Array(binaryStr.length);
+      for (let i = 0; i < binaryStr.length; i++) {
+        bytes[i] = binaryStr.charCodeAt(i);
+      }
+      const blob = new Blob([bytes], { type: "application/octet-stream" });
+      const file = new File([blob], "test-verification.psbt", {
+        type: "application/octet-stream",
+      });
+      setSelectedFile(file);
+    } catch {
+      setError("Failed to generate test PSBT");
+    } finally {
+      setGeneratingTestPsbt(false);
+    }
   };
 
   const handleDrop = useCallback((e: React.DragEvent) => {
@@ -352,6 +390,30 @@ export default function VerifyPage() {
                   </p>
                 </div>
               )}
+            </div>
+
+            {/* Test PSBT generator */}
+            <div className="mt-4 p-4 rounded-xl bg-amber-500/5 border border-amber-500/20">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-amber-400">Testing Mode</p>
+                  <p className="text-xs text-amber-400/60 mt-0.5">
+                    Generate a test PSBT with 1.5 BTC for this challenge
+                  </p>
+                </div>
+                <button
+                  onClick={generateTestPSBT}
+                  disabled={generatingTestPsbt}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 disabled:opacity-50 transition-all"
+                >
+                  {generatingTestPsbt ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Download className="w-4 h-4" />
+                  )}
+                  Generate Test PSBT
+                </button>
+              </div>
             </div>
 
             <div className="flex items-center gap-3 mt-6">
