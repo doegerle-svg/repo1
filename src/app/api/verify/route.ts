@@ -59,6 +59,7 @@ export async function POST(request: Request) {
   db.prepare("UPDATE challenges SET used = 1 WHERE id = ?").run(challengeId);
 
   // Verify the PSBT
+  console.log(`[Verify] PSBT length: ${psbt.length}, starts with: ${psbt.substring(0, 20)}, challenge: ${challenge.nonce}`);
   const result = verifyPSBT(psbt, challenge.nonce);
 
   const verificationId = uuidv4();

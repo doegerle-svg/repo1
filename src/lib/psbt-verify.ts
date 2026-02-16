@@ -78,11 +78,9 @@ export function verifyPSBT(
       // Get the UTXO value and script
       const utxoData = getUtxoData(input, txInput);
       if (!utxoData) {
-        // Log available keys for debugging
         const inputKeys = Object.keys(input).filter(k => input[k] != null);
-        console.error(`[PSBT Verify] Input ${i} missing UTXO data. Available keys: [${inputKeys.join(', ')}]`);
         return fail(
-          `Input ${i}: Missing UTXO data. Include witnessUtxo or nonWitnessUtxo.`
+          `Input ${i}: Missing UTXO data (available: ${inputKeys.join(', ')}). Include witnessUtxo or nonWitnessUtxo.`
         );
       }
 
