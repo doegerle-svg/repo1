@@ -70,6 +70,7 @@ export default function VerifyPage() {
   const [shareCopied, setShareCopied] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [psbtBase64, setPsbtBase64] = useState<string | null>(null);
   const [result, setResult] = useState<VerificationResult | null>(null);
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
   const [generatingTestPsbt, setGeneratingTestPsbt] = useState(false);
@@ -126,14 +127,10 @@ export default function VerifyPage() {
         setError(data.error || "Failed to generate test PSBT");
         return;
       }
-      // Convert base64 to binary and create a File object
-      const binaryStr = atob(data.data.psbt);
-      const bytes = new Uint8Array(binaryStr.length);
-      for (let i = 0; i < binaryStr.length; i++) {
-        bytes[i] = binaryStr.charCodeAt(i);
-      }
-      const blob = new Blob([bytes], { type: "application/octet-stream" });
-      const file = new File([blob], "test-verification.psbt", {
+      // Store the base64 PSBT directly (avoid binary round-trip)
+      setPsbtBase64(data.data.psbt);
+      // Create a display-only File for the UI
+      const file = new File([data.data.psbt], "test-verification.psbt", {
         type: "application/octet-stream",
       });
       setSelectedFile(file);
@@ -148,24 +145,40 @@ export default function VerifyPage() {
     e.preventDefault();
     setDragOver(false);
     const file = e.dataTransfer.files[0];
-    if (file) setSelectedFile(file);
+    if (file) {
+      setSelectedFile(file);
+      setPsbtBase64(null);
+    }
   }, []);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) setSelectedFile(file);
+    if (file) {
+      setSelectedFile(file);
+      setPsbtBase64(null);
+    }
   };
 
   const submitPSBT = async () => {
-    if (!selectedFile || !challenge) return;
+    if ((!selectedFile && !psbtBase64) || !challenge) return;
     setLoading(true);
     setError("");
 
     try {
-      const arrayBuffer = await selectedFile.arrayBuffer();
-      const base64 = btoa(
-        String.fromCharCode(...new Uint8Array(arrayBuffer))
-      );
+      // Use stored base64 directly if available (test PSBT),
+      // otherwise read from file and encode
+      let base64: string;
+      if (psbtBase64) {
+        base64 = psbtBase64;
+      } else {
+        const arrayBuffer = await selectedFile!.arrayBuffer();
+        const bytes = new Uint8Array(arrayBuffer);
+        let binary = "";
+        for (let i = 0; i < bytes.length; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        base64 = btoa(binary);
+      }
 
       const res = await fetch("/api/verify", {
         method: "POST",
@@ -466,6 +479,7 @@ export default function VerifyPage() {
                   setStep("generate");
                   setChallenge(null);
                   setSelectedFile(null);
+                  setPsbtBase64(null);
                   setError("");
                 }}
                 className="px-6 py-3 rounded-xl font-medium bg-card border border-border text-secondary hover:text-foreground transition-all"
