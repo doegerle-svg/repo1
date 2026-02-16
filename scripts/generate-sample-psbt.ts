@@ -12,6 +12,7 @@
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
+import * as bitcoin from "bitcoinjs-lib";
 
 const DUMMY_NONCE = "satstack:0000000000000000000000000000000000";
 
@@ -32,29 +33,6 @@ function createDummyDERSignature(): Buffer {
   ]);
 }
 
-function writeVarint(n: number): Buffer {
-  if (n < 0xfd) return Buffer.from([n]);
-  if (n <= 0xffff) {
-    const buf = Buffer.alloc(3);
-    buf[0] = 0xfd;
-    buf.writeUInt16LE(n, 1);
-    return buf;
-  }
-  const buf = Buffer.alloc(5);
-  buf[0] = 0xfe;
-  buf.writeUInt32LE(n, 1);
-  return buf;
-}
-
-function writeKeyValue(key: Buffer, value: Buffer): Buffer {
-  return Buffer.concat([
-    writeVarint(key.length),
-    key,
-    writeVarint(value.length),
-    value,
-  ]);
-}
-
 // Generate a test keypair
 const ecdh = crypto.createECDH("secp256k1");
 ecdh.generateKeys();
@@ -68,70 +46,41 @@ const totalSats = 150_000_000; // 1.5 BTC
 
 // OP_RETURN script
 const nonceBuffer = Buffer.from(DUMMY_NONCE, "utf8");
-// OP_RETURN OP_PUSHDATA
-const opReturnScript = Buffer.concat([
-  Buffer.from([0x6a]), // OP_RETURN
-  Buffer.from([nonceBuffer.length]), // push length
-  nonceBuffer,
-]);
+const opReturnScript = Buffer.from(
+  bitcoin.script.compile([bitcoin.opcodes.OP_RETURN, nonceBuffer])
+);
 
-// Build unsigned transaction
-const txParts: Buffer[] = [];
-// Version
-const versionBuf = Buffer.alloc(4);
-versionBuf.writeUInt32LE(2);
-txParts.push(versionBuf);
-// 1 input
-txParts.push(Buffer.from([0x01]));
-txParts.push(fakeTxId);
-const indexBuf = Buffer.alloc(4);
-indexBuf.writeUInt32LE(0);
-txParts.push(indexBuf);
-txParts.push(Buffer.from([0x00])); // empty scriptSig
-txParts.push(Buffer.from([0xfe, 0xff, 0xff, 0xff])); // sequence
-// 2 outputs
-txParts.push(Buffer.from([0x02]));
-// OP_RETURN output (value 0)
-txParts.push(Buffer.alloc(8)); // 0 sats
-txParts.push(writeVarint(opReturnScript.length));
-txParts.push(opReturnScript);
-// Change output
-const changeBuf = Buffer.alloc(8);
-changeBuf.writeBigUInt64LE(BigInt(totalSats - 1000));
-txParts.push(changeBuf);
-txParts.push(writeVarint(p2wpkhScript.length));
-txParts.push(p2wpkhScript);
-// Locktime
-txParts.push(Buffer.alloc(4));
+// Use bitcoinjs-lib's Psbt class for correct BIP 174 serialization
+const psbt = new bitcoin.Psbt({ network: bitcoin.networks.bitcoin });
 
-const unsignedTx = Buffer.concat(txParts);
+psbt.addInput({
+  hash: fakeTxId,
+  index: 0,
+  witnessUtxo: {
+    script: p2wpkhScript,
+    value: BigInt(totalSats),
+  },
+});
 
-// Build PSBT
-const psbtParts: Buffer[] = [];
-// Magic
-psbtParts.push(Buffer.from([0x70, 0x73, 0x62, 0x74, 0xff]));
-// Global: unsigned tx
-psbtParts.push(writeKeyValue(Buffer.from([0x00]), unsignedTx));
-psbtParts.push(Buffer.from([0x00])); // separator
+psbt.addOutput({
+  script: opReturnScript,
+  value: BigInt(0),
+});
 
-// Input map
-const partialSigKey = Buffer.concat([Buffer.from([0x02]), compressedPubKey]);
-psbtParts.push(writeKeyValue(partialSigKey, createDummyDERSignature()));
-const valueBuf = Buffer.alloc(8);
-valueBuf.writeBigUInt64LE(BigInt(totalSats));
-const witnessUtxoData = Buffer.concat([
-  valueBuf,
-  writeVarint(p2wpkhScript.length),
-  p2wpkhScript,
-]);
-psbtParts.push(writeKeyValue(Buffer.from([0x08]), witnessUtxoData));
-psbtParts.push(Buffer.from([0x00])); // separator
+psbt.addOutput({
+  script: p2wpkhScript,
+  value: BigInt(totalSats - 1000),
+});
 
-// Output maps (empty)
-psbtParts.push(Buffer.from([0x00]));
-psbtParts.push(Buffer.from([0x00]));
+// Add dummy partial signature
+psbt.data.inputs[0].partialSig = [
+  {
+    pubkey: compressedPubKey,
+    signature: createDummyDERSignature(),
+  },
+];
 
-const psbtBuffer = Buffer.concat(psbtParts);
+const psbtBuffer = Buffer.from(psbt.toBuffer());
 
 const outDir = path.join(process.cwd(), "public");
 if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
