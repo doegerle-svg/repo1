@@ -110,37 +110,37 @@ function generateTestPSBT(nonce: string, amountBtc: number): string {
     bitcoin.script.compile([bitcoin.opcodes.OP_RETURN, nonceBuffer])
   );
 
-  // Build the PSBT manually at the binary level for maximum compatibility
-  // PSBT format: magic (5 bytes) + global map + input maps + output maps
-  const psbt = buildPSBT({
-    txVersion: 2,
-    inputs: [
-      {
-        prevTxId: fakeTxId,
-        prevIndex: 0,
-        witnessUtxo: {
-          script: p2wpkhScript,
-          value: totalSats,
-        },
-        partialSig: {
-          pubkey: compressedPubKey,
-          signature: createDummyDERSignature(),
-        },
-      },
-    ],
-    outputs: [
-      {
-        script: opReturnScript,
-        value: 0,
-      },
-      {
-        script: p2wpkhScript,
-        value: totalSats - 1000, // minus fee
-      },
-    ],
+  // Use bitcoinjs-lib's Psbt class for correct BIP 174 serialization
+  const psbt = new bitcoin.Psbt({ network: bitcoin.networks.bitcoin });
+
+  psbt.addInput({
+    hash: fakeTxId,
+    index: 0,
+    witnessUtxo: {
+      script: p2wpkhScript,
+      value: BigInt(totalSats),
+    },
   });
 
-  return psbt.toString("base64");
+  psbt.addOutput({
+    script: opReturnScript,
+    value: BigInt(0),
+  });
+
+  psbt.addOutput({
+    script: p2wpkhScript,
+    value: BigInt(totalSats - 1000), // minus fee
+  });
+
+  // Add a dummy partial signature to prove "ownership"
+  psbt.data.inputs[0].partialSig = [
+    {
+      pubkey: compressedPubKey,
+      signature: createDummyDERSignature(),
+    },
+  ];
+
+  return psbt.toBase64();
 }
 
 function createDummyDERSignature(): Buffer {
@@ -149,8 +149,7 @@ function createDummyDERSignature(): Buffer {
   const r = crypto.randomBytes(32);
   const s = crypto.randomBytes(32);
 
-  // Ensure r and s don't have leading zero issues
-  // If high bit is set, prepend a 0x00 byte
+  // If high bit is set, prepend a 0x00 byte (DER encoding rule)
   const rPadded = r[0] & 0x80 ? Buffer.concat([Buffer.from([0x00]), r]) : r;
   const sPadded = s[0] & 0x80 ? Buffer.concat([Buffer.from([0x00]), s]) : s;
 
@@ -165,151 +164,4 @@ function createDummyDERSignature(): Buffer {
     sPadded,
     Buffer.from([0x01]), // SIGHASH_ALL
   ]);
-}
-
-interface PSBTInput {
-  prevTxId: Buffer;
-  prevIndex: number;
-  witnessUtxo: {
-    script: Buffer;
-    value: number;
-  };
-  partialSig: {
-    pubkey: Buffer;
-    signature: Buffer;
-  };
-}
-
-interface PSBTOutput {
-  script: Buffer;
-  value: number;
-}
-
-interface PSBTParams {
-  txVersion: number;
-  inputs: PSBTInput[];
-  outputs: PSBTOutput[];
-}
-
-function buildPSBT(params: PSBTParams): Buffer {
-  const { txVersion, inputs, outputs } = params;
-
-  // Build the unsigned transaction
-  const unsignedTx = buildUnsignedTx(txVersion, inputs, outputs);
-
-  const parts: Buffer[] = [];
-
-  // PSBT magic bytes: "psbt" + 0xff
-  parts.push(Buffer.from([0x70, 0x73, 0x62, 0x74, 0xff]));
-
-  // === Global map ===
-  // Key: 0x00 (unsigned tx)
-  parts.push(writeKeyValue(Buffer.from([0x00]), unsignedTx));
-  // Separator
-  parts.push(Buffer.from([0x00]));
-
-  // === Input maps ===
-  for (const input of inputs) {
-    // Key 0x01: Non-witness UTXO (skip, we use witness)
-    // Key 0x02: Partial signature
-    const partialSigKey = Buffer.concat([Buffer.from([0x02]), input.partialSig.pubkey]);
-    parts.push(writeKeyValue(partialSigKey, input.partialSig.signature));
-
-    // Key 0x01: Witness UTXO (PSBT_IN_WITNESS_UTXO per BIP 174)
-    const witnessUtxoValue = serializeWitnessUtxo(input.witnessUtxo);
-    parts.push(writeKeyValue(Buffer.from([0x01]), witnessUtxoValue));
-
-    // Separator
-    parts.push(Buffer.from([0x00]));
-  }
-
-  // === Output maps ===
-  for (let i = 0; i < outputs.length; i++) {
-    // Empty output map (no extra data needed)
-    parts.push(Buffer.from([0x00]));
-  }
-
-  return Buffer.concat(parts);
-}
-
-function buildUnsignedTx(
-  version: number,
-  inputs: PSBTInput[],
-  outputs: PSBTOutput[]
-): Buffer {
-  const parts: Buffer[] = [];
-
-  // Version (4 bytes LE)
-  const versionBuf = Buffer.alloc(4);
-  versionBuf.writeUInt32LE(version);
-  parts.push(versionBuf);
-
-  // Input count (varint)
-  parts.push(writeVarint(inputs.length));
-
-  for (const input of inputs) {
-    // Previous tx hash (32 bytes, internal byte order = reversed display order)
-    parts.push(input.prevTxId);
-    // Previous output index (4 bytes LE)
-    const indexBuf = Buffer.alloc(4);
-    indexBuf.writeUInt32LE(input.prevIndex);
-    parts.push(indexBuf);
-    // ScriptSig length (0 for unsigned)
-    parts.push(Buffer.from([0x00]));
-    // Sequence (4 bytes LE, 0xfffffffe for RBF)
-    parts.push(Buffer.from([0xfe, 0xff, 0xff, 0xff]));
-  }
-
-  // Output count (varint)
-  parts.push(writeVarint(outputs.length));
-
-  for (const output of outputs) {
-    // Value (8 bytes LE)
-    const valueBuf = Buffer.alloc(8);
-    valueBuf.writeBigUInt64LE(BigInt(output.value));
-    parts.push(valueBuf);
-    // Script length + script
-    parts.push(writeVarint(output.script.length));
-    parts.push(output.script);
-  }
-
-  // Locktime (4 bytes LE, 0)
-  parts.push(Buffer.from([0x00, 0x00, 0x00, 0x00]));
-
-  return Buffer.concat(parts);
-}
-
-function serializeWitnessUtxo(utxo: { script: Buffer; value: number }): Buffer {
-  const valueBuf = Buffer.alloc(8);
-  valueBuf.writeBigUInt64LE(BigInt(utxo.value));
-  return Buffer.concat([
-    valueBuf,
-    writeVarint(utxo.script.length),
-    utxo.script,
-  ]);
-}
-
-function writeKeyValue(key: Buffer, value: Buffer): Buffer {
-  return Buffer.concat([
-    writeVarint(key.length),
-    key,
-    writeVarint(value.length),
-    value,
-  ]);
-}
-
-function writeVarint(n: number): Buffer {
-  if (n < 0xfd) {
-    return Buffer.from([n]);
-  } else if (n <= 0xffff) {
-    const buf = Buffer.alloc(3);
-    buf[0] = 0xfd;
-    buf.writeUInt16LE(n, 1);
-    return buf;
-  } else {
-    const buf = Buffer.alloc(5);
-    buf[0] = 0xfe;
-    buf.writeUInt32LE(n, 1);
-    return buf;
-  }
 }
