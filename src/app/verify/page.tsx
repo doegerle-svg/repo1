@@ -13,10 +13,13 @@ import {
   ArrowRight,
   RefreshCw,
   Download,
+  Share2,
 } from "lucide-react";
 import { TierBadge } from "@/components/TierBadge";
 import { BitcoinAmount } from "@/components/BitcoinAmount";
-import { BalanceTier } from "@/types";
+import { TierProgress } from "@/components/TierProgress";
+import { Confetti } from "@/components/Confetti";
+import { BalanceTier, TIER_CONFIG } from "@/types";
 
 interface Challenge {
   challengeId: string;
@@ -36,6 +39,27 @@ interface VerificationResult {
 
 type Step = "generate" | "upload" | "success";
 
+function generateShareText(result: VerificationResult): string {
+  const config = TIER_CONFIG[result.tier];
+  const tierBlocks = Object.keys(TIER_CONFIG) as BalanceTier[];
+  const currentIndex = tierBlocks.indexOf(result.tier);
+
+  const bar = tierBlocks
+    .map((_, i) => (i <= currentIndex ? "\u{1F7E7}" : "\u2B1C"))
+    .join("");
+
+  return [
+    `${config.emoji} SatStack Verified ${config.emoji}`,
+    "",
+    `${bar}`,
+    `Tier: ${config.label}`,
+    `\u20BF ${result.totalBtc.toFixed(8)} BTC`,
+    `${result.utxoCount} UTXO${result.utxoCount !== 1 ? "s" : ""} verified on-chain`,
+    "",
+    "Prove your stack \u{1F447}",
+  ].join("\n");
+}
+
 export default function VerifyPage() {
   const router = useRouter();
   const [step, setStep] = useState<Step>("generate");
@@ -43,11 +67,13 @@ export default function VerifyPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [result, setResult] = useState<VerificationResult | null>(null);
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
   const [generatingTestPsbt, setGeneratingTestPsbt] = useState(false);
+  const [showConfetti, setShowConfetti] = useState(false);
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -159,11 +185,27 @@ export default function VerifyPage() {
 
       setResult(data.data);
       setStep("success");
+      setShowConfetti(true);
     } catch {
       setError("Network error. Please try again.");
     } finally {
       setLoading(false);
     }
+  };
+
+  const shareToX = () => {
+    if (!result) return;
+    const text = generateShareText(result);
+    const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`;
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
+  const copyShareText = async () => {
+    if (!result) return;
+    const text = generateShareText(result);
+    await navigator.clipboard.writeText(text);
+    setShareCopied(true);
+    setTimeout(() => setShareCopied(false), 2000);
   };
 
   if (authenticated === null) {
@@ -198,6 +240,8 @@ export default function VerifyPage() {
 
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 py-12">
+      <Confetti active={showConfetti} />
+
       <div className="mb-10">
         <div className="flex items-center gap-4 mb-3">
           <div className="w-12 h-12 rounded-xl bg-bitcoin/10 flex items-center justify-center">
@@ -450,44 +494,77 @@ export default function VerifyPage() {
 
       {/* Step 3: Success */}
       {step === "success" && result && (
-        <div className="bg-card border border-border rounded-2xl p-8 text-center">
-          <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-green-500/10 flex items-center justify-center">
-            <Check className="w-10 h-10 text-green-400" />
-          </div>
-
-          <h2 className="text-2xl font-bold mb-2">Verification Successful!</h2>
-          <p className="text-secondary mb-8">
-            Your Bitcoin holdings have been cryptographically verified on-chain.
-          </p>
-
-          <div className="bg-[#0a0a0f] rounded-xl p-8 mb-8 border border-border inline-block">
-            <div className="mb-4">
-              <TierBadge tier={result.tier} size="lg" />
+        <div className="space-y-6">
+          <div className="bg-card border border-green-500/20 rounded-2xl p-8 text-center verification-success">
+            <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-green-500/10 flex items-center justify-center animate-bounce-once">
+              <Check className="w-10 h-10 text-green-400" />
             </div>
-            <div className="mb-2">
-              <BitcoinAmount btc={result.totalBtc} size="lg" />
-            </div>
-            <p className="text-sm text-muted">
-              {result.utxoCount} UTXO{result.utxoCount !== 1 ? "s" : ""}{" "}
-              verified &bull; Expires{" "}
-              {new Date(result.expiresAt).toLocaleDateString()}
+
+            <h2 className="text-2xl font-bold mb-2">Verification Successful!</h2>
+            <p className="text-secondary mb-8">
+              Your Bitcoin holdings have been cryptographically verified on-chain.
             </p>
-          </div>
 
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <button
-              onClick={() => router.push("/leaderboard")}
-              className="flex items-center gap-2 px-6 py-3 rounded-xl font-bold bg-gradient-to-r from-bitcoin to-amber-600 text-white hover:shadow-lg transition-all"
-            >
-              View Leaderboard
-              <ArrowRight className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => router.push("/profile")}
-              className="flex items-center gap-2 px-6 py-3 rounded-xl font-medium bg-card border border-border text-secondary hover:text-foreground transition-all"
-            >
-              Go to Profile
-            </button>
+            <div className="bg-[#0a0a0f] rounded-xl p-8 mb-6 border border-border inline-block min-w-[280px]">
+              <div className="mb-4">
+                <TierBadge tier={result.tier} size="lg" />
+              </div>
+              <div className="mb-4">
+                <BitcoinAmount btc={result.totalBtc} size="lg" />
+              </div>
+              <p className="text-sm text-muted mb-4">
+                {result.utxoCount} UTXO{result.utxoCount !== 1 ? "s" : ""}{" "}
+                verified
+              </p>
+              <TierProgress btc={result.totalBtc} tier={result.tier} />
+            </div>
+
+            {/* Share card preview */}
+            <div className="bg-[#0a0a0f] rounded-xl p-4 mb-6 border border-border text-left max-w-sm mx-auto">
+              <pre className="text-xs text-secondary font-mono whitespace-pre-wrap leading-relaxed">
+                {generateShareText(result)}
+              </pre>
+            </div>
+
+            {/* Share buttons */}
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-6">
+              <button
+                onClick={shareToX}
+                className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold bg-foreground text-background hover:opacity-90 transition-all"
+              >
+                <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current">
+                  <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                </svg>
+                Share on X
+              </button>
+              <button
+                onClick={copyShareText}
+                className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-medium bg-card border border-border text-secondary hover:text-foreground transition-all"
+              >
+                {shareCopied ? (
+                  <Check className="w-4 h-4 text-green-400" />
+                ) : (
+                  <Share2 className="w-4 h-4" />
+                )}
+                {shareCopied ? "Copied!" : "Copy Share Text"}
+              </button>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+              <button
+                onClick={() => router.push("/leaderboard")}
+                className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold bg-gradient-to-r from-bitcoin to-amber-600 text-white hover:shadow-lg transition-all"
+              >
+                View Leaderboard
+                <ArrowRight className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => router.push("/profile")}
+                className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-medium bg-card border border-border text-secondary hover:text-foreground transition-all"
+              >
+                Go to Profile
+              </button>
+            </div>
           </div>
         </div>
       )}

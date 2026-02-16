@@ -215,9 +215,9 @@ function buildPSBT(params: PSBTParams): Buffer {
     const partialSigKey = Buffer.concat([Buffer.from([0x02]), input.partialSig.pubkey]);
     parts.push(writeKeyValue(partialSigKey, input.partialSig.signature));
 
-    // Key 0x08: Witness UTXO
+    // Key 0x01: Witness UTXO (PSBT_IN_WITNESS_UTXO per BIP 174)
     const witnessUtxoValue = serializeWitnessUtxo(input.witnessUtxo);
-    parts.push(writeKeyValue(Buffer.from([0x08]), witnessUtxoValue));
+    parts.push(writeKeyValue(Buffer.from([0x01]), witnessUtxoValue));
 
     // Separator
     parts.push(Buffer.from([0x00]));
