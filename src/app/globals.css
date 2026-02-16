@@ -96,9 +96,33 @@ body {
 .rank-silver { color: #c0c0c0; text-shadow: 0 0 10px rgba(192, 192, 192, 0.4); }
 .rank-bronze { color: #cd7f32; text-shadow: 0 0 10px rgba(205, 127, 50, 0.4); }
 
+/* Bounce once animation for success checkmark */
+@keyframes bounceOnce {
+  0% { transform: scale(0); opacity: 0; }
+  50% { transform: scale(1.2); }
+  70% { transform: scale(0.9); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.animate-bounce-once {
+  animation: bounceOnce 0.6s ease-out forwards;
+}
+
+/* Success card glow */
+.verification-success {
+  box-shadow: 0 0 40px rgba(34, 197, 94, 0.08);
+}
+
 /* Particle background */
 .bg-grid {
   background-image:
     radial-gradient(circle at 1px 1px, rgba(247, 147, 26, 0.08) 1px, transparent 0);
   background-size: 40px 40px;
+}
+
+/* Mobile touch improvements */
+@media (max-width: 640px) {
+  .bg-grid {
+    background-size: 30px 30px;
+  }
 }

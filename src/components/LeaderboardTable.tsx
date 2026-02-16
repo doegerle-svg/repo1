@@ -4,7 +4,14 @@ import { useState, useEffect } from "react";
 import { TierBadge } from "./TierBadge";
 import { BitcoinAmount } from "./BitcoinAmount";
 import { LeaderboardEntry, BalanceTier, TIER_CONFIG } from "@/types";
-import { Trophy, ChevronLeft, ChevronRight, Filter } from "lucide-react";
+import { Trophy, ChevronLeft, ChevronRight, Filter, Clock } from "lucide-react";
+
+const TIME_PERIODS = [
+  { key: "", label: "All Time" },
+  { key: "30d", label: "30d" },
+  { key: "7d", label: "7d" },
+  { key: "24h", label: "24h" },
+] as const;
 
 export function LeaderboardTable() {
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
@@ -12,12 +19,14 @@ export function LeaderboardTable() {
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [tierFilter, setTierFilter] = useState<string>("");
+  const [period, setPeriod] = useState<string>("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setLoading(true);
     const params = new URLSearchParams({ page: String(page), limit: "25" });
     if (tierFilter) params.set("tier", tierFilter);
+    if (period) params.set("period", period);
 
     fetch(`/api/leaderboard?${params}`)
       .then((r) => r.json())
@@ -30,7 +39,7 @@ export function LeaderboardTable() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [page, tierFilter]);
+  }, [page, tierFilter, period]);
 
   const getRankDisplay = (rank: number) => {
     if (rank === 1) return { class: "rank-gold", icon: "👑" };
@@ -43,6 +52,26 @@ export function LeaderboardTable() {
 
   return (
     <div className="space-y-6">
+      {/* Time period filter */}
+      <div className="flex items-center gap-2">
+        <Clock className="w-4 h-4 text-secondary" />
+        <div className="flex bg-card rounded-lg border border-border p-0.5">
+          {TIME_PERIODS.map((tp) => (
+            <button
+              key={tp.key}
+              onClick={() => { setPeriod(tp.key); setPage(1); }}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                period === tp.key
+                  ? "bg-bitcoin text-white"
+                  : "text-secondary hover:text-foreground"
+              }`}
+            >
+              {tp.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Tier filter */}
       <div className="flex items-center gap-2 flex-wrap">
         <Filter className="w-4 h-4 text-secondary" />

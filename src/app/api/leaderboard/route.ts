@@ -1,11 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 
+const PERIOD_MAP: Record<string, string> = {
+  "24h": "datetime('now', '-1 day')",
+  "7d": "datetime('now', '-7 days')",
+  "30d": "datetime('now', '-30 days')",
+};
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const page = Math.max(1, parseInt(searchParams.get("page") || "1"));
   const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") || "50")));
   const tier = searchParams.get("tier");
+  const period = searchParams.get("period");
   const offset = (page - 1) * limit;
 
   const db = getDb();
@@ -16,6 +23,10 @@ export async function GET(request: NextRequest) {
   if (tier) {
     whereClause += " AND v.tier = ?";
     params.push(tier);
+  }
+
+  if (period && PERIOD_MAP[period]) {
+    whereClause += ` AND v.verified_at >= ${PERIOD_MAP[period]}`;
   }
 
   const countRow = db

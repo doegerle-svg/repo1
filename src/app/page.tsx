@@ -1,11 +1,54 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
-import { Shield, Trophy, Upload, Zap, Bitcoin, ArrowRight, Lock, Eye } from "lucide-react";
+import { Shield, Trophy, Upload, Zap, Bitcoin, ArrowRight, Lock, Eye, Users, TrendingUp, CheckCircle } from "lucide-react";
 import { TIER_CONFIG, BalanceTier } from "@/types";
+
+interface Stats {
+  totalStackers: number;
+  totalBtc: number;
+  totalVerifications: number;
+}
+
+function AnimatedCounter({ value, suffix = "" }: { value: number; suffix?: string }) {
+  const [display, setDisplay] = useState(0);
+
+  useEffect(() => {
+    if (value === 0) return;
+    const duration = 1500;
+    const steps = 40;
+    const increment = value / steps;
+    let current = 0;
+    let step = 0;
+    const timer = setInterval(() => {
+      step++;
+      current = Math.min(value, increment * step);
+      setDisplay(current);
+      if (step >= steps) clearInterval(timer);
+    }, duration / steps);
+    return () => clearInterval(timer);
+  }, [value]);
+
+  const formatted = value >= 1
+    ? display.toLocaleString(undefined, { maximumFractionDigits: 2 })
+    : display.toFixed(8);
+
+  return <span>{formatted}{suffix}</span>;
+}
 
 export default function HomePage() {
   const tiers = Object.entries(TIER_CONFIG) as [BalanceTier, typeof TIER_CONFIG[BalanceTier]][];
+  const [stats, setStats] = useState<Stats | null>(null);
+
+  useEffect(() => {
+    fetch("/api/stats")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.success) setStats(data.data);
+      })
+      .catch(() => {});
+  }, []);
 
   return (
     <div className="bg-grid">
@@ -54,6 +97,39 @@ export default function HomePage() {
               </Link>
             </div>
           </div>
+
+          {/* Live stats social proof */}
+          {stats && stats.totalStackers > 0 && (
+            <div className="mt-16 grid grid-cols-3 gap-4 max-w-2xl mx-auto">
+              <div className="bg-card/50 backdrop-blur border border-border rounded-xl p-4 text-center">
+                <div className="flex items-center justify-center gap-2 mb-1">
+                  <Users className="w-4 h-4 text-bitcoin" />
+                </div>
+                <div className="text-2xl sm:text-3xl font-bold text-foreground">
+                  <AnimatedCounter value={stats.totalStackers} />
+                </div>
+                <p className="text-xs text-muted mt-1">Verified Stackers</p>
+              </div>
+              <div className="bg-card/50 backdrop-blur border border-border rounded-xl p-4 text-center">
+                <div className="flex items-center justify-center gap-2 mb-1">
+                  <Bitcoin className="w-4 h-4 text-bitcoin" />
+                </div>
+                <div className="text-2xl sm:text-3xl font-bold text-bitcoin">
+                  <AnimatedCounter value={stats.totalBtc} />
+                </div>
+                <p className="text-xs text-muted mt-1">BTC Proven</p>
+              </div>
+              <div className="bg-card/50 backdrop-blur border border-border rounded-xl p-4 text-center">
+                <div className="flex items-center justify-center gap-2 mb-1">
+                  <CheckCircle className="w-4 h-4 text-green-400" />
+                </div>
+                <div className="text-2xl sm:text-3xl font-bold text-foreground">
+                  <AnimatedCounter value={stats.totalVerifications} />
+                </div>
+                <p className="text-xs text-muted mt-1">Verifications</p>
+              </div>
+            </div>
+          )}
 
           {/* Floating BTC symbols */}
           <div className="absolute top-20 left-10 opacity-10 float-animation hidden lg:block">
